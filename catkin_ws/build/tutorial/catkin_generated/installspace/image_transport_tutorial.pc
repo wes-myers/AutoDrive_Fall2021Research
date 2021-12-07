@@ -1,0 +1,8 @@
+prefix=/home/wesley/Documents/AutoDrive/Tutorials/catkin_ws/install
+
+Name: image_transport_tutorial
+Description: Description of image_transport_tutorial
+Version: 0.0.0
+Cflags: -I${prefix}/include
+Libs: -L${prefix}/lib 
+Requires: cv_bridge image_transport message_runtime sensor_msgs
