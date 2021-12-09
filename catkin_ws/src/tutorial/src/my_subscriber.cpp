@@ -130,7 +130,9 @@ std::tuple<cv::Mat, cv::Mat> project(cv::Mat &pc, cv::Mat K, cv::Mat &T, int w =
   {
     T.col(3).rowRange(0,3).copyTo(T_sub.col(i));
   }
-  std::cout << T_sub << std::endl;
+  cv::Mat x = T.colRange(0, 3).rowRange(0,3) * pc;
+  x += T_sub;
+  x = K * x;
 }
 
 int main(int argc, char **argv)
@@ -183,12 +185,21 @@ int main(int argc, char **argv)
 
   std::cout << frontObjPoints(example_mat) << std::endl;
   std::cout << pointsinRange(example_mat, 5) << std::endl;
-  std::cout << example_mat.row(0).dot(example_mat.row(1)) << std::endl;
-  // for(int i{}; i <)
-  // cv::Mat pc_new = pc.colRange(0,3).t() + colToRows;
-  // std::cout << pc_new << std::endl;
+  std::cout << T_RL.rowRange(0,3).colRange(0,3) * pc.colRange(0,3).t() << std::endl;
 
 
+  cv::Mat T_sub = cv::Mat(3,3,CV_32F);
+  for(int i{}; i < T_sub.cols; i++)
+  {
+    T_RL.col(3).rowRange(0,3).copyTo(T_sub.col(i));
+  }
+  std::cout << "T_RL.colRange(0, 3).rowRange(0,3)\n" << T_sub << "pc.t()\n" << pc.t() << std::endl;
+  cv::Mat x = T_RL.colRange(0, 3).rowRange(0,3) * pc.colRange(0,3);
+  std::cout << "x:\n" << x << std::endl;
+  x = x + T_sub;
+  x = K * x;
+
+  std::cout << "x:\n" << x << std::endl;
 
   ros::init(argc, argv, "image_listener");
   ros::NodeHandle nh;
