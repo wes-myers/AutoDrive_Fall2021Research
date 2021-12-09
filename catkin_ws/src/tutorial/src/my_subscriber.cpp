@@ -4,7 +4,9 @@
 #include <cv_bridge/cv_bridge.h>
 #include <iostream>
 #include <math.h>
+#include <vector>
 #define _USE_MATH_DEFINES
+
 
 void imageCallback(const sensor_msgs::ImageConstPtr& msg)
 {
@@ -20,19 +22,21 @@ void imageCallback(const sensor_msgs::ImageConstPtr& msg)
   }
 }
 
-tuple<int, int> MinMax(cv::Mat x) 
+
+std::tuple<int, int> MinMax(cv::Mat x) 
 {
-  tuple<int, int> minmax;
-  int min;
-  int max;
+  std::tuple<int, int> minmax;
+  double min;
+  double max;
   cv::Point minLoc;
   cv::Point maxLoc;
 
-  cv::minMaxLoc(x, &minVal, &maxVal, &minLoc, &maxLoc);
+  cv::minMaxLoc(x, &min, &max, &minLoc, &maxLoc);
 
-  minmax = make_tuple(min, max);
+  minmax = std::make_tuple(min, max);
   return minmax;
 }
+
 
 double toRad(double x) 
 {
@@ -41,10 +45,92 @@ double toRad(double x)
 
 cv::Mat tranform(cv::Mat pc, cv::Mat T) 
 {
-  cv::Mat T_sub = cv::Mat(T, cv::rowRange(0, 2), cv::colRange(0, 2));
-  cv::Mat T_vec = cv::Mat(T, cv::rowRange(0, 2), cv::colRange(0, 0));
+  cv::Mat T_sub =  T.cv::Mat::rowRange(0, 2).cv::Mat::colRange(0, 2);
+  cv::Mat T_vec =  T.cv::Mat::rowRange(0, 2).cv::Mat::colRange(0, 0);
 
-  return T_sub*pc + T_vec;
+  cv::Mat output = T_sub.cv::Mat::mul(pc);
+  return output + T_vec;
+}
+
+
+cv::Mat frontObjPoints(cv::Mat pc) 
+{
+    std::vector<float> frontObjList;
+    for(int i = 0; i < pc.rows; i++)
+    {
+
+      float x = pc.at<float>(i, 0);
+      float y = pc.at<float>(i, 1);
+      float z = pc.at<float>(i, 2);
+      if ((x > 2.3) && ((y > -5.0) && (y < 5.0)) && (z > -1.5)) {
+        frontObjList.push_back(x);
+        frontObjList.push_back(y);
+        frontObjList.push_back(z);
+      }
+    }
+
+    int num_rows = frontObjList.size() / 3;
+    if (num_rows != 0)
+    {
+      float* finalList = new float[num_rows];
+      for (int i{}; i < frontObjList.size(); i++) 
+      {
+        finalList[i] = frontObjList.at(i);
+      }
+      
+      return cv::Mat(num_rows, 3, CV_32F, finalList);
+    }
+}
+
+
+/*
+ * Assuming this function checks each set of points in pointcloud to check if they are within distance 
+ * to the origin
+ */
+cv::Mat pointsinRange(cv::Mat pc, int d) 
+{
+  std::vector<float> pointList;
+  for(int i{}; i < pc.rows; i++) 
+  {
+
+    std::cout << pc.row(i) << std::endl;
+    std::cout << "norm " << cv::norm(pc.row(i), 1) << std::endl;
+    if (cv::norm(pc.row(i), 1) < d)
+    {
+      pointList.push_back(pc.at<float>(i, 0));
+      pointList.push_back(pc.at<float>(i, 1));
+      pointList.push_back(pc.at<float>(i, 2));
+    }
+  }
+  
+  int num_rows = pointList.size() / 3;
+    if (num_rows != 0)
+    {
+      float* finalList = new float[num_rows];
+      for (int i{}; i < pointList.size(); i++) 
+      {
+        finalList[i] = pointList.at(i);
+      }
+      
+      return cv::Mat(num_rows, 3, CV_32F, finalList);
+    }
+}
+
+
+float getPadding(float theta, float x, float c, float f)
+{
+  return c + f*tan(toRad(theta) + atan((x-c)/f));
+}
+
+std::tuple<cv::Mat, cv::Mat> project(cv::Mat &pc, cv::Mat K, cv::Mat &T, int w = 2048, int h = 2048) 
+{
+  // cv::Mat T_sub = T.col(3).rowRange(0,3);
+  cv::Mat T_sub = cv::Mat(3,3,CV_32F);
+  for(int i{}; i < T_sub.cols; i++)
+  {
+    T.col(3).rowRange(0,3).copyTo(T_sub.col(i));
+  }
+  std::cout << T_sub << std::endl;
 }
 
 int main(int argc, char **argv)
@@ -79,11 +165,31 @@ int main(int argc, char **argv)
                                            0,                   0,                   0,   1.000000000000000 };
   cv::Mat T_LC = cv::Mat(4, 4, CV_32F, T_LC_arr);
 
-  std::cout << K.at<float>(1,2) << std::endl;
-  std::cout << K << std::endl; 
-  std::cout << D << std::endl; 
-  std::cout << T_RL << std::endl;
-  std::cout << T_LC << std::endl;
+  // std::cout << K.at<float>(1,2) << std::endl;
+  // std::cout << K << std::endl; 
+  // std::cout << D << std::endl; 
+  // std::cout << T_RL << std::endl;
+  // std::cout << T_LC << std::endl;
+  float example[12] = {   2.5,    40,    3,
+                          2.1,   -1.6,    3,
+                          2.5,    -1.3,   3,
+                          2.6,    3.3,    -5.1 };
+  float pcList[12] = {100.0, 50.0, 40.5, 105,
+                  50.1, 53.2,25, 100,
+                  25.6, 32.1,45.7, 40
+  };
+  cv::Mat example_mat = cv::Mat(4, 3, CV_32F, example);
+  cv::Mat pc = cv::Mat(3, 4, CV_32F, pcList);
+
+  std::cout << frontObjPoints(example_mat) << std::endl;
+  std::cout << pointsinRange(example_mat, 5) << std::endl;
+  std::cout << example_mat.row(0).dot(example_mat.row(1)) << std::endl;
+  // for(int i{}; i <)
+  // cv::Mat pc_new = pc.colRange(0,3).t() + colToRows;
+  // std::cout << pc_new << std::endl;
+
+
+
   ros::init(argc, argv, "image_listener");
   ros::NodeHandle nh;
   cv::namedWindow("view");
