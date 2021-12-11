@@ -5,6 +5,7 @@
 #include <iostream>
 #include <math.h>
 #include <vector>
+#include <unordered_map>
 #define _USE_MATH_DEFINES
 
 /*
@@ -89,7 +90,8 @@ std::tuple<int, int> MinMax(cv::Mat x)
   cv::Point maxLoc;
 
   cv::minMaxLoc(x, &min, &max, &minLoc, &maxLoc);
-
+  min = floor(min);
+  max = ceil(max);
   minmax = std::make_tuple(min, max);
   return minmax;
 }
@@ -112,10 +114,9 @@ cv::Mat Transform(cv::Mat pc, cv::Mat T)
 
   cv::Mat T_sub = T.rowRange(0, 3).colRange(0, 3);
   cv::Mat T_vec =  T.rowRange(0, 3).colRange(3,3);
-  std::cout << "yes" << std::endl;
   pc = T.rowRange(0, 3).colRange(0, 3) * pc;
   pc = pc + T_vec;
-  std::cout  << "Transform: output pc\n" << pc.t() << std::endl;
+  std::cout  << "Transform: output pc\n" << pc.t() << "\n\n\n";
   return pc.t();
 }
 
@@ -142,6 +143,7 @@ cv::Mat frontObjPoints(cv::Mat pc)
         frontObjList.push_back(y);
         frontObjList.push_back(z);
       }
+      std::cout << "\n";
     }
 
     int num_rows = frontObjList.size() / 3;
@@ -153,7 +155,6 @@ cv::Mat frontObjPoints(cv::Mat pc)
     for (int i{}; i < frontObjList.size(); i++) 
     {
       finalList[i] = frontObjList.at(i);
-      std::cout << finalList[i];
     }
     
     std::cout << "frontObjPoints: output: \n" << cv::Mat(num_rows, 3, CV_32F, finalList) << "\n\n\n";
@@ -246,7 +247,9 @@ std::tuple<cv::Mat, cv::Mat> Project(cv::Mat pc, cv::Mat K, cv::Mat T, int w = 2
   }
   projTuple = std::make_tuple<cv::Mat, cv::Mat>(projObjPoints.colRange(0, iter).t(), 
                                            ObjPoints.colRange(0, iter).t());
+  std::cout << "\n\n\n";
   return projTuple;
+
 }
 
 /*
@@ -254,7 +257,6 @@ std::tuple<cv::Mat, cv::Mat> Project(cv::Mat pc, cv::Mat K, cv::Mat T, int w = 2
  */
 void imageCallback(cv::Mat pcRight, cv::Mat pcLeft)
 {
-  std::cout << cv::Mat::zeros(5, 3, CV_32F) <<std::endl;
   cv::Mat pcRight_points = pcRight.colRange(0,3);
   pcRight_points = Transform(pcRight_points.colRange(0,3).t(), T_RL.clone());
   cv::Mat pc = pcLeft;
@@ -273,26 +275,64 @@ void imageCallback(cv::Mat pcRight, cv::Mat pcLeft)
   9.77962017,  3.32163858,  2.38448119, 2, 2,
   9.79115677,  3.28747869,  2.38448119, 2, 2
   };
+
   cv::Mat pcInRange = cv::Mat(10, 5, CV_32F, pcInRange_arr);
   cv::Mat objPoints = pointsinRange(frontObjPoints(pcInRange), 40);
-  std::cout << "Callback : objPoints\n" << objPoints << std::endl;
+  std::cout << "Callback : objPoints\n" << objPoints << "\n\n\n";
   if (objPoints.cols == 0) {
     return;
   }
   cv::Mat objPoints_transpose = objPoints.t();
   std::tuple<cv::Mat, cv::Mat> project = Project(objPoints.clone().t(), K.clone(), T_LC.clone());
-  cv::Mat projObjPoints = std::get<1>(project);
-  objPoints = std::get<0>(project);
-  std::cout << "Callback : objPoints\n" << objPoints << std::endl << "projObjPoints\n" << projObjPoints << std::endl;
+  cv::Mat projObjPoints = std::get<0>(project);
+  objPoints = std::get<1>(project);
+  std::cout << "Callback : objPoints\n" << objPoints << std::endl << "Callback: projObjPoints\n" << projObjPoints << "\n\n\n";
 
 
   std::tuple<int, int> xMinMax = MinMax(objPoints.col(0));
   std::tuple<int, int> yMinMax = MinMax(objPoints.col(1));
+  int xMin = std::get<0>(xMinMax);
+  int yMin = std::get<0>(yMinMax);
+  int xMax = std::get<1>(xMinMax);
+  int yMax = std::get<1>(yMinMax);
+  std::cout << "Callback MinMax: " << xMin << " " << xMax << " " << yMin << " " << yMax << std::endl;
+  cv::Mat topDownMap = cv::Mat::zeros((xMax - xMin +1)
+                                      ,(yMax - yMin + 1), CV_8UC1);
+  std::unordered_map<std::string, std::vector<int>> mapPointLUT;
 
-  cv::Mat topDownMap = cv::Mat::zeros((std::get<1>(xMinMax) - std::get<0>(xMinMax) +1)
-                                      ,(std::get<1>(yMinMax) - std::get<0>(yMinMax) + 1), CV_8UC1);
+  for (int i{}; i < objPoints.rows; i++)
+  {
+    int index[2];
+    index[0] = (int) objPoints.at<float>(i,0);
+    index[1] = (int) objPoints.at<float>(i, 1);
+    std::cout << "Callback: index:\n" << index[0] << " " << index[1] << std::endl;
+    std::string indexStr = index[0] + " " + index[1];
+    mapPointLUT[indexStr].push_back(i);
 
-
+    std::cout << "Callback: mapPointLUT[indexStr]:  " << "[ "; 
+    for (int j{}; j < mapPointLUT[indexStr].size(); j++) 
+    {
+      std::cout << mapPointLUT[indexStr].at(j) << ", ";
+    }
+    std::cout << "]" << std::endl << std::endl;
+    int leftPadding = 0;
+    if ((index[1] - yMin - 2) > 0)
+    {
+      leftPadding = index[1] - yMin - 2;
+    }
+    int rightPadding = yMax - yMin;
+    if ((index[1]-yMin+2) < (yMax - yMin))
+    {
+      rightPadding = index[1] - yMin + 3;
+    }
+    topDownMap.row(index[0]-xMin).colRange(leftPadding, rightPadding) = cv::Scalar::all(10);
+    std::cout << "Callback: topDownMap.row(index[0]-xMin).colRange(leftPadding, rightPadding):\n" <<
+    topDownMap << std::endl;
+  }
+    cv::Mat labels;
+    int ret = 0;
+    cv::connectedComponents(topDownMap, labels);
+    std::cout << "Callback: labels: \n" << labels << std::endl;
   // try
   // {
   //   cv::imwrite("view.jpg", cv_bridge::toCvShare(msg, "bgr8")->image);
